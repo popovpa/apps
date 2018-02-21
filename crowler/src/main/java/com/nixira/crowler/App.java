@@ -1,39 +1,61 @@
 package com.nixira.crowler;
 
-import org.apache.commons.io.IOUtils;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 
-import java.net.URL;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Created by pavel.a.popov on 12.02.18.
  */
 public class App {
+
+    static Pattern p = Pattern.compile("(?is)key = \"(.+?)\"");
+
     public static void main(String[] args) {
         try {
-            int errors = 0;
             Set<String> inns = new HashSet<>();
             while (inns.size() < 1000) {
                 String inn = getRandomString(10);
                 if (isValidINN(inn)) {
                     inns.add(inn);
-                } else {
-                    errors++;
                 }
             }
-            System.out.println(errors);
 
+            List<String> comp = new ArrayList<>();
             for (String inn : inns) {
 
-                URL url = new URL(String.format("https://sbis.ru/contragents/%s", inn));
+                //URL url = new URL(String.format("https://sbis.ru/contragents/%s", inn));
 
-                String content = IOUtils.toString(url.openStream(), "UTF-8");
-                if (!content.contains("class=\"cCard__MainReq-Name\">Нет данных<")) {
-                    System.out.println(content);
+                Document doc = Jsoup.connect(String.format("https://sbis.ru/contragents/%s", inn)).get();
+
+                if (doc != null) {
+                    for (Iterator<Element> it = doc.select("script").iterator(); it.hasNext(); ) {
+                        Element el = it.next();
+                        if (el.html().contains("window.componentOptions")) {
+                            String json = Arrays.stream(el.html().split("\n"))
+                                    .filter(s -> s.startsWith("window.componentOptions"))
+                                    .collect(Collectors.toList()).get(0).split("=")[1].trim();
+
+                            comp.add(json);
+                        }
+                    }
                 }
+
+                //String content = IOUtils.toString(url.openStream(), "UTF-8");
+                //if (!content.contains("class=\"cCard__MainReq-Name\">Нет данных<")) {
+                //    System.out.println(content);
+                //}
             }
+
+            if (!inns.isEmpty()) {
+                System.out.println(inns.size());
+                System.out.println(comp.size());
+            }
+
         } catch (Exception ex) {
             ex.printStackTrace();
         }
