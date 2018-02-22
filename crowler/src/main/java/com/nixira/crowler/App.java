@@ -1,12 +1,17 @@
 package com.nixira.crowler;
 
+import com.google.gson.Gson;
+import jdk.nashorn.api.scripting.ScriptObjectMirror;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
+import javax.script.Bindings;
+import javax.script.ScriptContext;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
 import java.util.*;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Created by pavel.a.popov on 12.02.18.
@@ -26,36 +31,38 @@ public class App {
             }
 
             List<String> comp = new ArrayList<>();
+            ScriptEngine se = new ScriptEngineManager().getEngineByName("javascript");
             for (String inn : inns) {
-
-                //URL url = new URL(String.format("https://sbis.ru/contragents/%s", inn));
 
                 Document doc = Jsoup.connect(String.format("https://sbis.ru/contragents/%s", inn)).get();
 
                 if (doc != null) {
                     for (Iterator<Element> it = doc.select("script").iterator(); it.hasNext(); ) {
                         Element el = it.next();
-                        if (el.html().contains("window.componentOptions")) {
-                            String json = Arrays.stream(el.html().split("\n"))
-                                    .filter(s -> s.startsWith("window.componentOptions"))
-                                    .collect(Collectors.toList()).get(0).split("=")[1].trim();
+                        String jsCode = el.html();
+                        if (jsCode.contains("window.componentOptions")) {
+                            try {
+                                se.eval("window={};" + jsCode);
+                                Bindings bindings = se.getBindings(ScriptContext.ENGINE_SCOPE);
+                                Object a = ((ScriptObjectMirror) bindings.get("window")).get("componentOptions");
 
-                            comp.add(json);
+                                Map obj = new Gson().fromJson(a.toString(), Map.class);
+                                if (obj.size() > 7) {
+                                    comp.add(a.toString());
+                                } else {
+                                    System.out.println(a);
+                                }
+                            } catch (Exception ex) {
+                                ex.printStackTrace();
+                            }
                         }
                     }
                 }
-
-                //String content = IOUtils.toString(url.openStream(), "UTF-8");
-                //if (!content.contains("class=\"cCard__MainReq-Name\">Нет данных<")) {
-                //    System.out.println(content);
-                //}
             }
-
             if (!inns.isEmpty()) {
                 System.out.println(inns.size());
                 System.out.println(comp.size());
             }
-
         } catch (Exception ex) {
             ex.printStackTrace();
         }
