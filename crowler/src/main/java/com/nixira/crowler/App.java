@@ -1,16 +1,11 @@
 package com.nixira.crowler;
 
-import com.google.gson.Gson;
-import jdk.nashorn.api.scripting.ScriptObjectMirror;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-
-import javax.script.Bindings;
-import javax.script.ScriptContext;
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
@@ -23,42 +18,34 @@ public class App {
     public static void main(String[] args) {
         try {
             Set<String> inns = new HashSet<>();
-            while (inns.size() < 1000) {
+            while (inns.size() < 1000000) {
                 String inn = getRandomString(10);
                 if (isValidINN(inn)) {
                     inns.add(inn);
                 }
             }
 
+            ExecutorService executors = Executors.newFixedThreadPool(50);
+
             List<String> comp = new ArrayList<>();
-            ScriptEngine se = new ScriptEngineManager().getEngineByName("javascript");
+            List<Future<String>> futureList = new ArrayList<>();
             for (String inn : inns) {
-
-                Document doc = Jsoup.connect(String.format("https://sbis.ru/contragents/%s", inn)).get();
-
-                if (doc != null) {
-                    for (Iterator<Element> it = doc.select("script").iterator(); it.hasNext(); ) {
-                        Element el = it.next();
-                        String jsCode = el.html();
-                        if (jsCode.contains("window.componentOptions")) {
-                            try {
-                                se.eval("window={};" + jsCode);
-                                Bindings bindings = se.getBindings(ScriptContext.ENGINE_SCOPE);
-                                Object a = ((ScriptObjectMirror) bindings.get("window")).get("componentOptions");
-
-                                Map obj = new Gson().fromJson(a.toString(), Map.class);
-                                if (obj.size() > 7) {
-                                    comp.add(a.toString());
-                                } else {
-                                    System.out.println(a);
-                                }
-                            } catch (Exception ex) {
-                                ex.printStackTrace();
-                            }
-                        }
-                    }
-                }
+                futureList.add(executors.submit(new CrowlJob(inn)));
             }
+            AtomicInteger counter = new AtomicInteger();
+            futureList.forEach(f -> {
+                try {
+                    String json = f.get();
+                    counter.incrementAndGet();
+                    if (json != null) {
+                        comp.add(f.get());
+                        System.out.println(comp.size() + " from " + counter.get());
+                    }
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            });
+            executors.shutdown();
             if (!inns.isEmpty()) {
                 System.out.println(inns.size());
                 System.out.println(comp.size());
